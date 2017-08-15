@@ -55,8 +55,6 @@ vue编译时，将所有挂载在dom上的子节点，劫持到使用DocumentFra
 
 （2）如果是元素结点，且有 `v-model` 属性（input的双向数据绑定）： 
       
-&gt; 根据程序数据 `vm.data.key`，初始化节点值。       
-
 &gt; 增加 input事件监听，回调函数触发 `vm.data.key` 的setter。      
     
 （3）如果是文本结点（简单处理，只支持 `{{ key }}`，文本前后不能有其他内容）： 
@@ -77,7 +75,7 @@ vue编译时，将所有挂载在dom上的子节点，劫持到使用DocumentFra
     
                 if( attr.nodeName == 'v-model' ){
                     let name = attr.nodeValue; // 属性值
-                    node.value = vm.data[name]; // 设置节点的value值（初始化）
+    //                    node.value = vm.data[name]; // 设置节点的value值（初始化）
                     node.removeAttribute('v-model'); // 移除属性
                     new Watcher( vm, node, name ); // 添加订阅者
     
@@ -178,7 +176,7 @@ vue编译时，将所有挂载在dom上的子节点，劫持到使用DocumentFra
 
 （4）***整个 订阅发布模式 流程：***      
 
-&gt; vue编译时，对 `{{ key }}`文本元素 添加订阅者：`new Watcher()`。        
+&gt; vue编译时，对 `{{ key }}`文本元素、input元素，添加订阅者：`new Watcher()`。        
 
 &gt; `new Watcher()` 时，设置 全局变量`Dep.target`为当前订阅者，然后初始化 执行`update()`，触发 `vm.data.key`的 getter。     
 
