@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="initial-scale=1, user-scalable=0, minimum-scale=1.0, maximum-scale=1.0"/>
+    <title></title>
+</head>
+<body>
+<div id="app">
+    <input type="text" v-model="text">
+    {{ text }}
+</div>
+
+<script>
+
+    // 订阅者（根据数据vm.data，设置dom）
+    class Watcher{
+        constructor( vm, node, name ){
+            this.name = name;
+            this.node = node;
+            this.vm = vm;
+
+            // 每次增加订阅者，都设置 Dep.target全局变量，
+            // 执行update（触发getter），将订阅者添加到dep.subs[]
+            Dep.target = this; // 全局变量
+            this.update();
+            Dep.target = null;
+        }
+        update(){
+            this.node.nodeValue = this.get();
+        }
+        get(){
+            return this.vm.data[this.name]; // 触发 getter
+        }
+    }
+
+    // 主题发布器（当数据vm.data.key改变，发送通知给订阅者，更新视图）
+    class Dep{
+        constructor(){
+            this.subs = [];
+        }
+        // 发出通知，更新视图
+        notify(){
+            this.subs.forEach( (sub) => {
+                sub.update();
+            })
+        }
+        // 压入 订阅者
+        addSub( sub ){
+            this.subs.push( sub );
+        }
+    }
+
+    // 【编译】数据初始化绑定
+    var compile = ( node, vm ) => {
+        var regex = /\{\{(.*)\}\}/; // 正则{{ … }}
+
+        if( node.nodeType === 1 ){ // 节点类型为元素
+            var attrs = node.attributes; // 属性
+            for( let i=0; i < attrs.length; i++ ){
+                let attr = attrs[i];
+
+                if( attr.nodeName == 'v-model' ){
+                    let name = attr.nodeValue; // 属性值
+                    node.value = vm.data[name]; // 设置节点的value值（初始化）
+                    node.removeAttribute('v-model'); // 移除属性
+
+                    // input事件监听：触发 setter
+                    node.addEventListener('input', function (e) {
+                        vm.data[name] = e.target.value;
+                    });
+                }
+            }
+        }else if( node.nodeType === 3 ){ // 节点类型为文本（换行符、文字等）
+
+//            console.log( node.nodeValue );
+            if( regex.test( node.nodeValue ) ){
+                let name = RegExp.$1; // 获取搭配的字符串
+                name = name.trim();
+//                node.nodeValue = vm.data[name];
+
+                new Watcher( vm, node, name ); // 添加订阅者
+            }
+        }
+    };
+
+    // 【虚拟dom】将要操作的dom，全部劫持到DocumentFragment
+    var nodeToFragment = ( node, vm ) => {
+        const flag = document.createDocumentFragment();
+        let child;
+        while( child = node.firstChild ){
+
+            // 不断劫持 挂载元素下 的所有dom节点，到创建的DocumentFragment
+            // appendChild是移动dom，不是复制插入。因此可不断 node.firstChild
+
+//            console.log( child );
+            compile( child, vm ); // 编译
+            flag.appendChild( child );
+        }
+//        console.log( flag );
+        return flag;
+    };
+
+    // 【监听数据】
+    let defineReactive = ( obj, key, val ) => {
+
+        // 每个key，都有自己的 主题发布器。
+        // 所有订阅者在new时，都会 使对应key触发getter，把自己加入到 对应key的 主题发布器的subs[]；
+        // 每个key 触发setter时，更新所有订阅者
+        let dep = new Dep();
+
+        // 定义 getter、setter（val是形参，属于私有变量）
+        Object.defineProperty( obj, key, {
+            get(){
+                console.log( 'getter:', val );
+                if( Dep.target ) dep.addSub( Dep.target ); // 只有在 new订阅者时，才会执行
+                return val;
+            },
+            set( newVal, oldVal ){
+                console.log( 'setter:', newVal );
+                if( newVal === oldVal ) return;
+
+                console.log( dep );
+                val = newVal;
+                dep.notify(); // 发出通知，更新视图
+            }
+        })
+    };
+
+    // 观察者，观测对象 所有属性
+    let observe = ( obj ) => {
+        Object.keys( obj ).forEach( (key) => {
+            defineReactive( obj, key, obj[key] );
+        })
+    };
+
+
+    // vue构造函数
+    class Vue{
+        constructor( option ){
+            this.data = option.data;
+            let _id = option.el;
+            observe( this.data ); // 监听数据
+
+            let _dom = nodeToFragment( document.getElementById( _id ), this ); // 虚拟dom
+            document.getElementById( _id ).appendChild( _dom );
+        }
+    }
+    var vm = new Vue({
+        el: 'app',
+        data: {
+            text: 'hello world'
+        }
+    });
+
+</script>
+</body>
+</html>
