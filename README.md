@@ -30,6 +30,25 @@ vue编译时，将所有挂载在dom上的子节点，劫持到使用DocumentFra
 （4）劫持之前，要先对dom节点编译（数据初始化绑定）。        
 
 
+    // 【虚拟dom】将要操作的dom，全部劫持到DocumentFragment
+    var nodeToFragment = ( node, vm ) => {
+        const flag = document.createDocumentFragment();
+        let child;
+        while( child = node.firstChild ){
+    
+            // 不断劫持 挂载元素下 的所有dom节点，到创建的DocumentFragment
+            // appendChild是移动dom，不是复制插入。因此可不断 node.firstChild
+    
+    //            console.log( child );
+            compile( child, vm ); // 编译
+            flag.appendChild( child );
+        }
+    //        console.log( flag );
+        return flag;
+    };
+
+
+
 ######【编译】compile( node, vm ):       
 
 （1）根据 dom节点的 nodeType，判断节点类型。这里只处理了元素、文本节点。     
@@ -44,7 +63,43 @@ vue编译时，将所有挂载在dom上的子节点，劫持到使用DocumentFra
       
 &gt; 正则匹配文本：`{{ key }}`，拿到 key属性名。       
 
-&gt; 给文本节点 增加订阅者（订阅者功能：根据数据 `vm.data`，设置dom内容）。   
+（4）给dom节点（input、文本节点） 增加订阅者（订阅者功能：根据数据 `vm.data`，设置dom内容）。   
+
+
+    // 【编译】数据初始化绑定
+    var compile = ( node, vm ) => {
+        var regex = /\{\{(.*)\}\}/; // 正则{{ … }}
+    
+        if( node.nodeType === 1 ){ // 节点类型为元素
+            var attrs = node.attributes; // 属性
+            for( let i=0; i < attrs.length; i++ ){
+                let attr = attrs[i];
+    
+                if( attr.nodeName == 'v-model' ){
+                    let name = attr.nodeValue; // 属性值
+                    node.value = vm.data[name]; // 设置节点的value值（初始化）
+                    node.removeAttribute('v-model'); // 移除属性
+                    new Watcher( vm, node, name ); // 添加订阅者
+    
+                    // input事件监听：触发 setter
+                    node.addEventListener('input', function (e) {
+                        vm.data[name] = e.target.value;
+                    });
+                }
+            }
+        }else if( node.nodeType === 3 ){ // 节点类型为文本（换行符、文字等）
+    
+    //            console.log( node.nodeValue );
+            if( regex.test( node.nodeValue ) ){
+                let name = RegExp.$1; // 获取搭配的字符串
+                name = name.trim();
+    //                node.nodeValue = vm.data[name];
+    
+                new Watcher( vm, node, name ); // 添加订阅者
+            }
+        }
+    };
+
 
 
 ###### 订阅发布模式（观察者模式）:  
@@ -60,6 +115,47 @@ vue编译时，将所有挂载在dom上的子节点，劫持到使用DocumentFra
 （3）主题发布器 `class Dep{ }`（当数据 `vm.data.key` 改变，发送通知给订阅者，更新视图）     
  
 &gt; 提供 压入订阅者方法 `addSub()`，广播通知订阅者更新视图方法 `notify()`。      
+
+
+    // 订阅者（根据数据vm.data，设置dom）
+    class Watcher{
+        constructor( vm, node, name ){
+            this.name = name;
+            this.node = node;
+            this.vm = vm;
+    
+            // 每次增加订阅者，都设置 Dep.target全局变量，
+            // 执行update（触发getter），将订阅者添加到dep.subs[]
+            Dep.target = this; // 全局变量
+            this.update();
+            Dep.target = null;
+        }
+        update(){
+            let _val = this.get();
+            this.node.value = _val; // input
+            this.node.nodeValue = _val; // 文本元素
+        }
+        get(){
+            return this.vm.data[this.name]; // 触发 getter
+        }
+    }
+    
+    // 主题发布器（当数据vm.data.key改变，发送通知给订阅者，更新视图）
+    class Dep{
+        constructor(){
+            this.subs = [];
+        }
+        // 发出通知，更新视图
+        notify(){
+            this.subs.forEach( (sub) => {
+                sub.update();
+            })
+        }
+        // 压入 订阅者
+        addSub( sub ){
+            this.subs.push( sub );
+        }
+    }
 
 
 ######【监听数据】observe( obj ):  
@@ -80,7 +176,6 @@ vue编译时，将所有挂载在dom上的子节点，劫持到使用DocumentFra
 
 （3）对象的 所有属性，都有一个独立的 主题对象。       
 
-
 （4）***整个 订阅发布模式 流程：***      
 
 &gt; vue编译时，对 `{{ key }}`文本元素 添加订阅者：`new Watcher()`。        
@@ -92,6 +187,60 @@ vue编译时，将所有挂载在dom上的子节点，劫持到使用DocumentFra
 &gt; getter 返回了属性值，回到`new Watcher()`，`Dep.target` 设为空。防止多次插入 已插入过的订阅者。     
 
 &gt; 当`vm.data.key`的 setter 被触发，属性的主题对象执行 `dep.notify()`，通知其下所有订阅者（保存在`subs[]`）更新dom。     
+
+
+    // 【监听数据】
+    let defineReactive = ( obj, key, val ) => {
+    
+        // 每个key，都有自己的 主题发布器对象。
+        // 所有订阅者在new时，都会 使对应key触发getter，把自己加入到 对应key的 主题发布器的subs[]；
+        // 每个key 触发setter时，更新所有订阅者
+        let dep = new Dep();
+    
+        // 定义 getter、setter（val是形参，属于私有变量）
+        Object.defineProperty( obj, key, {
+            get(){
+                console.log( 'getter:', val );
+                if( Dep.target ) dep.addSub( Dep.target ); // 只有在 new订阅者时，才会执行
+                return val;
+            },
+            set( newVal, oldVal ){
+                console.log( 'setter:', newVal );
+                if( newVal === oldVal ) return;
+    
+                console.log( dep );
+                val = newVal;
+                dep.notify(); // 发出通知，更新视图
+            }
+        })
+    };
+    
+    // 观察者，观测对象 所有属性
+    let observe = ( obj ) => {
+        Object.keys( obj ).forEach( (key) => {
+            defineReactive( obj, key, obj[key] );
+        })
+    };
+    
+    
+    // vue构造函数
+    class Vue{
+        constructor( option ){
+            this.data = option.data;
+            let _id = option.el;
+            observe( this.data ); // 监听数据
+    
+            let _dom = nodeToFragment( document.getElementById( _id ), this ); // 虚拟dom
+            document.getElementById( _id ).appendChild( _dom );
+        }
+    }
+    var vm = new Vue({
+        el: 'app',
+        data: {
+            text: 'hello world'
+        }
+    });
+
 
 
 （5）总结：

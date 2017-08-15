@@ -9,6 +9,8 @@
 <div id="app">
     <input type="text" v-model="text">
     {{ text }}
+    <!--<input type="text" v-model="text">-->
+    <!--{{ text }}-->
 </div>
 
 <script>
@@ -27,7 +29,9 @@
             Dep.target = null;
         }
         update(){
-            this.node.nodeValue = this.get();
+            let _val = this.get();
+            this.node.value = _val; // input
+            this.node.nodeValue = _val; // 文本元素
         }
         get(){
             return this.vm.data[this.name]; // 触发 getter
@@ -64,6 +68,7 @@
                     let name = attr.nodeValue; // 属性值
                     node.value = vm.data[name]; // 设置节点的value值（初始化）
                     node.removeAttribute('v-model'); // 移除属性
+                    new Watcher( vm, node, name ); // 添加订阅者
 
                     // input事件监听：触发 setter
                     node.addEventListener('input', function (e) {
