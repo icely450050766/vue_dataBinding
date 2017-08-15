@@ -104,7 +104,7 @@
     // 【监听数据】
     let defineReactive = ( obj, key, val ) => {
 
-        // 每个key，都有自己的 主题发布器。
+        // 每个key，都有自己的 主题发布器对象。
         // 所有订阅者在new时，都会 使对应key触发getter，把自己加入到 对应key的 主题发布器的subs[]；
         // 每个key 触发setter时，更新所有订阅者
         let dep = new Dep();
